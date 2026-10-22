@@ -1,0 +1,38 @@
+let cves = dynamic(["CVE-2026-109618", "CVE-2026-109619"]);
+let fixed = datatable(Branch:string, FixedVersion:string) [
+    "8.5","8.5.12", "8.4","8.4.27", "8.3","8.3.36", "8.2","8.2.35"
+];
+let tvmFlagged = DeviceTvmSoftwareVulnerabilities
+    | where CveId in (cves)
+    | summarize CVEs = make_set(CveId) by DeviceId;
+DeviceTvmSoftwareInventory
+| where SoftwareName =~ "php" or SoftwareVendor =~ "php"
+| extend Branch = strcat(tostring(split(SoftwareVersion, ".")[0]), ".", tostring(split(SoftwareVersion, ".")[1]))
+| join kind=leftouter fixed on Branch
+| extend VersionStatus = case(
+    isempty(FixedVersion) and parse_version(SoftwareVersion) < parse_version("8.2.0"), "Vulnerable-EOL",
+    isempty(FixedVersion), "Unknown",
+    parse_version(SoftwareVersion) >= parse_version(FixedVersion), "Fixed",
+    "Vulnerable")
+| summarize Versions = make_set(strcat(SoftwareVersion, " (", VersionStatus, ")")),
+            Statuses = make_set(VersionStatus),
+            Software = make_set(strcat(SoftwareVendor, " ", SoftwareName))
+    by DeviceId, DeviceName, OSPlatform
+| extend DeviceStatus = case(
+    set_has_element(Statuses, "Vulnerable") or set_has_element(Statuses, "Vulnerable-EOL"), "Vulnerable",
+    set_has_element(Statuses, "Unknown"), "Unknown",
+    "Fixed")
+| join kind=leftouter tvmFlagged on DeviceId
+| extend TvmFlagged = coalesce(array_length(CVEs), 0) > 0
+| extend Gap = DeviceStatus == "Vulnerable" and not(TvmFlagged)
+| extend VersionCount = array_length(Versions),
+         Versions = strcat_array(array_sort_asc(Versions), ", "),
+         CVEs = strcat_array(array_sort_asc(CVEs), ", "),
+         Software = strcat_array(Software, ", ")
+| join kind=leftouter (
+    DeviceInfo
+    | summarize arg_max(Timestamp, DeviceType, MachineGroup, IsInternetFacing, PublicIP, ExposureLevel) by DeviceId
+) on DeviceId
+| project DeviceName, OSPlatform, DeviceType, MachineGroup, IsInternetFacing, PublicIP, ExposureLevel,
+          Software, Versions, VersionCount, DeviceStatus, TvmFlagged, Gap, CVEs
+| sort by Gap desc, DeviceStatus desc, IsInternetFacing desc, VersionCount desc, DeviceName asc
