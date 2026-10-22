@@ -17,6 +17,10 @@ One row per device that has PHP in software inventory. Each installed version is
 
 A device is **Vulnerable** when any of its PHP versions are Vulnerable or Vulnerable-EOL. **Gap** is true when the device is Vulnerable and `DeviceTvmSoftwareVulnerabilities` has no row for these CVEs on that device. Sort order puts gaps first.
 
+**Paths** lists where each PHP build sits on disk, as `path (version)`, from `DeviceTvmSoftwareEvidenceBeta` (up to 25 per device). Use it to tell which product installed the vulnerable build, for example `C:\xampp\php\php.exe (8.1.29)` next to `/usr/bin/php8.3 (8.3.36)`. The evidence table is in beta and does not cover every install, so Paths can be empty.
+
+**IsInternetFacing** comes from the newest `DeviceInfo` row that has a value. Partial `DeviceInfo` rows often leave it empty, so the newest row alone is not enough.
+
 ## Updating the baseline
 
 The CVE list and the fixed builds are at the top of the query. The branch key is `major.minor`:
@@ -34,4 +38,5 @@ Change those two blocks when the advisory or the fixed builds change.
 
 - `DeviceTvmSoftwareInventory` — installed software, including the PHP version
 - `DeviceTvmSoftwareVulnerabilities` — TVM finding per device and CVE
-- `DeviceInfo` — device type, machine group, internet-facing flag, public IP, and exposure level
+- `DeviceTvmSoftwareEvidenceBeta` — disk paths behind each PHP inventory row
+- `DeviceInfo` — device type, machine group, internet-facing flag, and public IP

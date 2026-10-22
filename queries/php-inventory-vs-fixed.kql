@@ -5,6 +5,11 @@ let fixed = datatable(Branch:string, FixedVersion:string) [
 let tvmFlagged = DeviceTvmSoftwareVulnerabilities
     | where CveId in (cves)
     | summarize CVEs = make_set(CveId) by DeviceId;
+let phpPaths = DeviceTvmSoftwareEvidenceBeta
+    | where SoftwareName =~ "php" or SoftwareVendor =~ "php"
+    | mv-expand DiskPath = DiskPaths to typeof(string)
+    | where isnotempty(DiskPath)
+    | summarize Paths = make_set(strcat(DiskPath, " (", SoftwareVersion, ")"), 25) by DeviceId;
 DeviceTvmSoftwareInventory
 | where SoftwareName =~ "php" or SoftwareVendor =~ "php"
 | extend Branch = strcat(tostring(split(SoftwareVersion, ".")[0]), ".", tostring(split(SoftwareVersion, ".")[1]))
@@ -31,8 +36,15 @@ DeviceTvmSoftwareInventory
          Software = strcat_array(Software, ", ")
 | join kind=leftouter (
     DeviceInfo
-    | summarize arg_max(Timestamp, DeviceType, MachineGroup, IsInternetFacing, PublicIP, ExposureLevel) by DeviceId
+    | summarize arg_max(Timestamp, DeviceType, MachineGroup, PublicIP) by DeviceId
 ) on DeviceId
-| project DeviceName, OSPlatform, DeviceType, MachineGroup, IsInternetFacing, PublicIP, ExposureLevel,
-          Software, Versions, VersionCount, DeviceStatus, TvmFlagged, Gap, CVEs
+| join kind=leftouter (
+    DeviceInfo
+    | where isnotnull(IsInternetFacing)
+    | summarize arg_max(Timestamp, IsInternetFacing) by DeviceId
+) on DeviceId
+| join kind=leftouter phpPaths on DeviceId
+| extend Paths = array_sort_asc(Paths)
+| project DeviceId, DeviceName, OSPlatform, DeviceType, MachineGroup, IsInternetFacing, PublicIP,
+          Software, Versions, VersionCount, DeviceStatus, TvmFlagged, Gap, CVEs, Paths
 | sort by Gap desc, DeviceStatus desc, IsInternetFacing desc, VersionCount desc, DeviceName asc
